@@ -1,7 +1,8 @@
-import { useState } from "react";
+import React, { useState } from "react";
 import server from "./server";
+import elliptic from "elliptic";
 
-function Transfer({ address, setBalance }) {
+function Transfer({ address, setBalance, privateKey }) {
   const [sendAmount, setSendAmount] = useState("");
   const [recipient, setRecipient] = useState("");
 
@@ -11,16 +12,37 @@ function Transfer({ address, setBalance }) {
     evt.preventDefault();
 
     try {
-      const {
-        data: { balance },
-      } = await server.post(`send`, {
+      const ec = new elliptic.ec("secp256k1");
+
+      const senderKey = ec.keyFromPrivate(privateKey);
+      const recipientAddress = recipient;
+
+      const transaction = {
         sender: address,
         amount: parseInt(sendAmount),
-        recipient,
+        recipient: recipientAddress,
+      };
+
+      const transactionData = JSON.stringify(transaction);
+
+      const signature = senderKey.sign(transactionData, "hex");
+
+      const {
+        data: { balance },
+      } = await server.post("send", {
+        sender: transaction.sender,
+        recipient: transaction.recipient,
+        amount: transaction.amount,
+        signature: {
+          r: signature.r.toString("hex"),
+          s: signature.s.toString("hex"),
+          recoveryParam: signature.recoveryParam,
+        },
       });
+
       setBalance(balance);
-    } catch (ex) {
-      alert(ex.response.data.message);
+    } catch (error) {
+      alert("An error occurred during the transfer.");
     }
   }
 
@@ -31,19 +53,21 @@ function Transfer({ address, setBalance }) {
       <label>
         Send Amount
         <input
+          type="number"
           placeholder="1, 2, 3..."
           value={sendAmount}
           onChange={setValue(setSendAmount)}
-        ></input>
+        />
       </label>
 
       <label>
-        Recipient
+        Recipient Address
         <input
-          placeholder="Type an address, for example: 0x2"
+          type="text"
+          placeholder="Type the recipient address"
           value={recipient}
           onChange={setValue(setRecipient)}
-        ></input>
+        />
       </label>
 
       <input type="submit" className="button" value="Transfer" />
